@@ -212,6 +212,38 @@ function odds() {
     ];
 }
 
+// ============================================================
+// RACE CLASSIFICATION FILTERS
+// ============================================================
+
+function selectedChips(id) {
+    const box = $(id);
+
+    if (!box) {
+        return [];
+    }
+
+    return Array.from(
+        box.querySelectorAll('button.on')
+    )
+        .map(b => b.dataset.value)
+        .filter(Boolean);
+}
+
+
+function bindFilterChips() {
+
+    document
+        .querySelectorAll('.filter-chips button')
+        .forEach(b => {
+
+            b.onclick = () => {
+                b.classList.toggle('on');
+            };
+
+        });
+}
+
 
 // ============================================================
 // CREATE BACKTEST REQUEST
@@ -302,9 +334,18 @@ function requestBody() {
         overround_max:
             num('overMax'),
 
-        race_codes: [],
-        race_categories: [],
-        race_grades: [],
+        race_codes:
+        selectedChips('raceCodes'),
+    
+        race_categories:
+            selectedChips('raceCategories'),
+        
+        race_grades:
+        selectedChips('raceGrades'),
+
+        race_codes: selectedChips('raceCodes'),
+        race_categories: selectedChips('raceCategories'),
+        race_grades: selectedChips('raceGrades'),
 
         handicap_status: null,
         number_of_winners: null,
@@ -1769,6 +1810,8 @@ $('refresh').onclick =
 // ============================================================
 
 bindChartInteraction();
+
+bindFilterChips();
 
 setDates();
 
