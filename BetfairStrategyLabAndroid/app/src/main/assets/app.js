@@ -5,6 +5,7 @@ const $ = id => document.getElementById(id);
 let oddsMode = 'any';
 let pollTimer = null;
 let lastResult = null;
+let chartState = null;
 
 
 // ============================================================
@@ -95,7 +96,6 @@ document.querySelectorAll('.tab').forEach(b => {
 
         showView(b.dataset.view);
 
-        // Redraw the chart whenever Results becomes visible.
         if (
             b.dataset.view === 'results' &&
             lastResult
@@ -105,7 +105,6 @@ document.querySelectorAll('.tab').forEach(b => {
             });
         }
     };
-
 });
 
 
@@ -162,7 +161,6 @@ function setOddsMode(mode) {
                 ? 'Maximum odds '
                 : 'Minimum odds ';
 
-    // Handy default for laying/backing outsiders.
     if (
         mode === 'over' &&
         !$('odds1').value
@@ -179,7 +177,6 @@ document
         b.onclick = () => {
             setOddsMode(b.dataset.mode);
         };
-
     });
 
 
@@ -229,9 +226,8 @@ function requestBody() {
         from_date: $('from').value,
         to_date: $('to').value,
 
-        countries: [
-            $('country').value
-        ],
+        // Great Britain only.
+        countries: ['GB'],
 
         plan: 'Basic Plan',
 
@@ -372,8 +368,8 @@ async function filters() {
 
     try {
 
-        const c =
-            $('country').value;
+        // Great Britain only.
+        const c = 'GB';
 
         const x =
             await api(
@@ -401,9 +397,6 @@ async function filters() {
         console.log(e);
     }
 }
-
-
-$('country').onchange = filters;
 
 
 // ============================================================
@@ -531,10 +524,6 @@ async function poll(id) {
             p + '%';
 
 
-        // --------------------------------------------
-        // BACKTEST COMPLETE
-        // --------------------------------------------
-
         if (j.status === 'complete') {
 
             const r =
@@ -547,12 +536,6 @@ async function poll(id) {
             $('run').disabled =
                 false;
 
-            /*
-             * IMPORTANT:
-             *
-             * Make the Results screen visible BEFORE
-             * trying to measure and draw the canvas.
-             */
             showView('results');
 
             render(r);
@@ -563,10 +546,6 @@ async function poll(id) {
         }
 
 
-        // --------------------------------------------
-        // FAILED
-        // --------------------------------------------
-
         if (j.status === 'failed') {
 
             throw Error(
@@ -575,10 +554,6 @@ async function poll(id) {
             );
         }
 
-
-        // --------------------------------------------
-        // KEEP POLLING
-        // --------------------------------------------
 
         pollTimer =
             setTimeout(
@@ -629,15 +604,32 @@ function render(r) {
         'RESULT';
 
     $('resultSub').textContent =
-        `${r.request?.from_date || ''} → ${r.request?.to_date || ''} · ${(r.request?.countries || []).join(', ')}`;
+        `${r.request?.from_date || ''} → ${r.request?.to_date || ''} · Great Britain`;
 
 
     // --------------------------------------------------------
     // SUMMARY METRICS
     // --------------------------------------------------------
 
+    const netValue =
+        Number(s.net || 0);
+
     $('netM').textContent =
-        money(s.net);
+        money(netValue);
+
+    $('netM').classList.remove(
+        'positive',
+        'negative',
+        'neutral'
+    );
+
+    $('netM').classList.add(
+        netValue > 0
+            ? 'positive'
+            : netValue < 0
+                ? 'negative'
+                : 'neutral'
+    );
 
     $('roiM').textContent =
         Number(
@@ -687,7 +679,7 @@ function render(r) {
                         ${x.wins}
                     </td>
 
-                    <td>
+                    <td class="${Number(x.net) >= 0 ? 'positive' : 'negative'}">
                         ${money(x.net)}
                     </td>
 
@@ -754,10 +746,14 @@ function render(r) {
             .join('');
 
 
-    /*
-     * Wait until Android/WebView has laid out
-     * the Results page before drawing the chart.
-     */
+    // Clear old chart selection when a new result opens.
+    const tip = $('chartTip');
+
+    if (tip) {
+        tip.classList.add('hide');
+        tip.innerHTML = '';
+    }
+
     requestAnimationFrame(() => {
 
         draw(
@@ -772,7 +768,112 @@ function render(r) {
 // PROFIT CURVE
 // ============================================================
 
-function draw(points) {
+function shortDate(value) {
+
+    if (!value) {
+        return '';
+    }
+
+    const d =
+        new Date(value);
+
+    if (
+        Number.isNaN(
+            d.getTime()
+        )
+    ) {
+        return String(value)
+            .slice(0, 10);
+    }
+
+    return d.toLocaleDateString(
+        'en-GB',
+        {
+            day: '2-digit',
+            month: 'short',
+            year: '2-digit'
+        }
+    );
+}
+
+
+function fullDate(value) {
+
+    if (!value) {
+        return '';
+    }
+
+    const d =
+        new Date(value);
+
+    if (
+        Number.isNaN(
+            d.getTime()
+        )
+    ) {
+        return String(value);
+    }
+
+    return d.toLocaleString(
+        'en-GB',
+        {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        }
+    );
+}
+
+
+function axisMoney(value) {
+
+    const abs =
+        Math.abs(value);
+
+    const sign =
+        value < 0
+            ? '-£'
+            : '£';
+
+    if (abs >= 1000000) {
+
+        return sign +
+            (abs / 1000000)
+                .toFixed(
+                    abs >= 10000000
+                        ? 0
+                        : 1
+                ) +
+            'm';
+    }
+
+    if (abs >= 1000) {
+
+        return sign +
+            (abs / 1000)
+                .toFixed(
+                    abs >= 10000
+                        ? 0
+                        : 1
+                ) +
+            'k';
+    }
+
+    return sign +
+        abs.toFixed(
+            abs >= 100
+                ? 0
+                : 2
+        );
+}
+
+
+function draw(
+    points,
+    selectedIndex = null
+) {
 
     const c =
         $('chart');
@@ -781,33 +882,27 @@ function draw(points) {
         return;
     }
 
-    /*
-     * Android WebView can occasionally report zero width
-     * immediately after changing views.
-     */
     let w =
         c.clientWidth;
 
     if (!w) {
 
         requestAnimationFrame(
-            () => draw(points)
+            () =>
+                draw(
+                    points,
+                    selectedIndex
+                )
         );
 
         return;
     }
 
-
     const d =
         window.devicePixelRatio || 1;
 
     const h =
-        220;
-
-
-    // --------------------------------------------------------
-    // HIGH-DPI CANVAS
-    // --------------------------------------------------------
+        270;
 
     c.width =
         Math.round(w * d);
@@ -815,14 +910,14 @@ function draw(points) {
     c.height =
         Math.round(h * d);
 
-    const x =
+    const ctx =
         c.getContext('2d');
 
-    if (!x) {
+    if (!ctx) {
         return;
     }
 
-    x.setTransform(
+    ctx.setTransform(
         d,
         0,
         0,
@@ -831,7 +926,7 @@ function draw(points) {
         0
     );
 
-    x.clearRect(
+    ctx.clearRect(
         0,
         0,
         w,
@@ -845,13 +940,16 @@ function draw(points) {
 
     if (!points.length) {
 
-        x.fillStyle =
+        chartState =
+            null;
+
+        ctx.fillStyle =
             '#718096';
 
-        x.font =
+        ctx.font =
             '13px sans-serif';
 
-        x.fillText(
+        ctx.fillText(
             'No profit curve data available',
             16,
             30
@@ -873,31 +971,36 @@ function draw(points) {
                 ) || 0
         );
 
-
-    const mn =
+    let mn =
         Math.min(
             0,
             ...vals
         );
 
-    const mx =
+    let mx =
         Math.max(
             0,
             ...vals
         );
 
+    if (mx === mn) {
+
+        mx += 1;
+        mn -= 1;
+    }
+
     const range =
-        mx - mn || 1;
+        mx - mn;
 
 
     // --------------------------------------------------------
-    // CHART DIMENSIONS
+    // CHART SIZE
     // --------------------------------------------------------
 
-    const L = 48;
-    const R = 10;
-    const T = 12;
-    const B = 30;
+    const L = 58;
+    const R = 12;
+    const T = 16;
+    const B = 48;
 
     const pw =
         Math.max(
@@ -909,16 +1012,34 @@ function draw(points) {
         h - T - B;
 
 
+    const pxFor =
+        i =>
+            L +
+            pw *
+            i /
+            Math.max(
+                1,
+                points.length - 1
+            );
+
+
+    const pyFor =
+        value =>
+            T +
+            ph *
+            (mx - value) /
+            range;
+
+
     // --------------------------------------------------------
-    // GRID
+    // Y AXIS — FIVE MONEY LEVELS
     // --------------------------------------------------------
 
-    x.strokeStyle =
-        '#e1e7ee';
+    ctx.font =
+        '10px sans-serif';
 
-    x.lineWidth =
-        1;
-
+    ctx.textBaseline =
+        'middle';
 
     for (
         let i = 0;
@@ -926,25 +1047,56 @@ function draw(points) {
         i++
     ) {
 
+        const ratio =
+            i / 4;
+
+        const value =
+            mx -
+            range *
+            ratio;
+
         const y =
             T +
             ph *
-            i /
-            4;
+            ratio;
 
-        x.beginPath();
 
-        x.moveTo(
+        // Grid line
+
+        ctx.strokeStyle =
+            '#e1e7ee';
+
+        ctx.lineWidth =
+            1;
+
+        ctx.beginPath();
+
+        ctx.moveTo(
             L,
             y
         );
 
-        x.lineTo(
+        ctx.lineTo(
             w - R,
             y
         );
 
-        x.stroke();
+        ctx.stroke();
+
+
+        // Money label
+
+        ctx.fillStyle =
+            '#718096';
+
+        ctx.textAlign =
+            'right';
+
+        ctx.fillText(
+            axisMoney(value),
+            L - 7,
+            y
+        );
     }
 
 
@@ -952,84 +1104,78 @@ function draw(points) {
     // ZERO LINE
     // --------------------------------------------------------
 
-    const zeroY =
-        T +
-        ph *
-        (mx / range);
+    if (
+        mn <= 0 &&
+        mx >= 0
+    ) {
 
-    x.strokeStyle =
-        '#aeb8c4';
+        const zeroY =
+            pyFor(0);
 
-    x.lineWidth =
-        1;
+        ctx.strokeStyle =
+            '#aeb8c4';
 
-    x.beginPath();
+        ctx.lineWidth =
+            1.2;
 
-    x.moveTo(
-        L,
-        zeroY
-    );
+        ctx.beginPath();
 
-    x.lineTo(
-        w - R,
-        zeroY
-    );
+        ctx.moveTo(
+            L,
+            zeroY
+        );
 
-    x.stroke();
+        ctx.lineTo(
+            w - R,
+            zeroY
+        );
+
+        ctx.stroke();
+    }
 
 
     // --------------------------------------------------------
     // PROFIT CURVE
     // --------------------------------------------------------
 
-    x.strokeStyle =
+    ctx.strokeStyle =
         '#1769ff';
 
-    x.lineWidth =
+    ctx.lineWidth =
         2.5;
 
-    x.lineJoin =
+    ctx.lineJoin =
         'round';
 
-    x.lineCap =
+    ctx.lineCap =
         'round';
 
-    x.beginPath();
+    ctx.beginPath();
 
 
     points.forEach(
         (p, i) => {
 
             const px =
-                L +
-                pw *
-                i /
-                Math.max(
-                    1,
-                    points.length - 1
-                );
-
-            const value =
-                Number(
-                    p.cumulative
-                ) || 0;
+                pxFor(i);
 
             const py =
-                T +
-                ph *
-                (mx - value) /
-                range;
+                pyFor(
+                    Number(
+                        p.cumulative
+                    ) || 0
+                );
 
             if (i === 0) {
 
-                x.moveTo(
+                ctx.moveTo(
                     px,
                     py
                 );
 
             } else {
 
-                x.lineTo(
+                ctx.lineTo(
                     px,
                     py
                 );
@@ -1038,35 +1184,424 @@ function draw(points) {
     );
 
 
-    x.stroke();
+    ctx.stroke();
 
 
     // --------------------------------------------------------
-    // LABELS
+    // X AXIS — ACTUAL RACE DATES
     // --------------------------------------------------------
 
-    x.fillStyle =
+    const labelCount =
+        w < 390
+            ? 3
+            : 5;
+
+    ctx.textAlign =
+        'center';
+
+    ctx.textBaseline =
+        'top';
+
+    ctx.fillStyle =
         '#718096';
 
-    x.font =
+    ctx.font =
         '10px sans-serif';
 
-    x.fillText(
-        money(mx),
-        2,
-        T + 4
-    );
 
-    x.fillText(
-        money(mn),
-        2,
-        T + ph
-    );
+    for (
+        let i = 0;
+        i < labelCount;
+        i++
+    ) {
 
-    x.fillText(
-        'Race date →',
+        const index =
+            Math.round(
+                (points.length - 1) *
+                i /
+                Math.max(
+                    1,
+                    labelCount - 1
+                )
+            );
+
+        const px =
+            pxFor(index);
+
+        ctx.fillText(
+            shortDate(
+                points[index]
+                    .market_time
+            ),
+            px,
+            T + ph + 10
+        );
+    }
+
+
+    // --------------------------------------------------------
+    // SELECTED RACE
+    // --------------------------------------------------------
+
+    if (
+        selectedIndex !== null &&
+        selectedIndex >= 0 &&
+        selectedIndex < points.length
+    ) {
+
+        const p =
+            points[selectedIndex];
+
+        const px =
+            pxFor(
+                selectedIndex
+            );
+
+        const py =
+            pyFor(
+                Number(
+                    p.cumulative
+                ) || 0
+            );
+
+
+        // Vertical marker
+
+        ctx.strokeStyle =
+            '#7f8b99';
+
+        ctx.lineWidth =
+            1;
+
+        ctx.setLineDash(
+            [4, 4]
+        );
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+            px,
+            T
+        );
+
+        ctx.lineTo(
+            px,
+            T + ph
+        );
+
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+
+
+        // Point marker
+
+        ctx.beginPath();
+
+        ctx.arc(
+            px,
+            py,
+            5,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fillStyle =
+            '#ffffff';
+
+        ctx.fill();
+
+        ctx.strokeStyle =
+            '#1769ff';
+
+        ctx.lineWidth =
+            3;
+
+        ctx.stroke();
+    }
+
+
+    chartState = {
+
+        points,
+
         L,
-        h - 7
+        R,
+        T,
+        B,
+
+        pw,
+        ph,
+
+        w,
+        h,
+
+        selectedIndex
+    };
+}
+
+
+// ============================================================
+// GRAPH RACE DETAILS
+// ============================================================
+
+function showChartPoint(index) {
+
+    if (
+        !chartState ||
+        index < 0 ||
+        index >=
+            chartState.points.length
+    ) {
+        return;
+    }
+
+    const p =
+        chartState.points[index];
+
+    const tip =
+        $('chartTip');
+
+    if (!tip) {
+        return;
+    }
+
+    const betNet =
+        Number(
+            p.bet_net || 0
+        );
+
+    const cumulative =
+        Number(
+            p.cumulative || 0
+        );
+
+
+    tip.innerHTML = `
+
+        <div class="chart-tip-head">
+
+            <strong>
+                ${esc(
+                    p.event_name ||
+                    'Race'
+                )}
+            </strong>
+
+            <span>
+                ${esc(
+                    fullDate(
+                        p.market_time
+                    )
+                )}
+            </span>
+
+        </div>
+
+
+        <div class="chart-tip-grid">
+
+            <span>Horse</span>
+
+            <b>
+                ${esc(
+                    p.horse || '—'
+                )}
+            </b>
+
+
+            <span>Bet</span>
+
+            <b>
+                ${esc(
+                    p.bet_type || '—'
+                )}
+            </b>
+
+
+            <span>Odds</span>
+
+            <b>
+                ${Number(
+                    p.bsp || 0
+                ).toFixed(2)}
+            </b>
+
+
+            <span>Bet P/L</span>
+
+            <b class="${
+                betNet >= 0
+                    ? 'positive'
+                    : 'negative'
+            }">
+
+                ${money(
+                    betNet
+                )}
+
+            </b>
+
+
+            <span>
+                Cumulative P/L
+            </span>
+
+            <b class="${
+                cumulative >= 0
+                    ? 'positive'
+                    : 'negative'
+            }">
+
+                ${money(
+                    cumulative
+                )}
+
+            </b>
+
+        </div>
+    `;
+
+
+    tip.classList.remove(
+        'hide'
+    );
+
+
+    draw(
+        chartState.points,
+        index
+    );
+}
+
+
+// ============================================================
+// FIND NEAREST GRAPH POINT
+// ============================================================
+
+function inspectChart(clientX) {
+
+    if (
+        !chartState ||
+        !chartState.points.length
+    ) {
+        return;
+    }
+
+    const c =
+        $('chart');
+
+    const rect =
+        c.getBoundingClientRect();
+
+    const x =
+        clientX -
+        rect.left;
+
+    const ratio =
+        Math.max(
+            0,
+            Math.min(
+                1,
+                (
+                    x -
+                    chartState.L
+                ) /
+                chartState.pw
+            )
+        );
+
+    const index =
+        Math.round(
+            ratio *
+            (
+                chartState
+                    .points
+                    .length -
+                1
+            )
+        );
+
+    showChartPoint(
+        index
+    );
+}
+
+
+// ============================================================
+// GRAPH TOUCH / MOUSE CONTROL
+// ============================================================
+
+function bindChartInteraction() {
+
+    const c =
+        $('chart');
+
+    if (!c) {
+        return;
+    }
+
+    let dragging =
+        false;
+
+
+    c.addEventListener(
+        'pointerdown',
+        e => {
+
+            dragging =
+                true;
+
+            if (
+                c.setPointerCapture
+            ) {
+                c.setPointerCapture(
+                    e.pointerId
+                );
+            }
+
+            inspectChart(
+                e.clientX
+            );
+        }
+    );
+
+
+    c.addEventListener(
+        'pointermove',
+        e => {
+
+            if (dragging) {
+
+                inspectChart(
+                    e.clientX
+                );
+            }
+        }
+    );
+
+
+    c.addEventListener(
+        'pointerup',
+        e => {
+
+            dragging =
+                false;
+
+            inspectChart(
+                e.clientX
+            );
+        }
+    );
+
+
+    c.addEventListener(
+        'pointercancel',
+        () => {
+
+            dragging =
+                false;
+        }
     );
 }
 
@@ -1088,6 +1623,7 @@ window.addEventListener(
 
             requestAnimationFrame(
                 () => {
+
                     draw(
                         lastResult.graph_points ||
                         []
@@ -1150,9 +1686,7 @@ async function loadHistory() {
                                 →
                                 ${esc(r.to_date)}
                                 ·
-                                ${(r.countries || [])
-                                    .map(esc)
-                                    .join(', ')}
+                                Great Britain
                                 ·
                                 ${Number(
                                     r.bets || 0
@@ -1180,7 +1714,6 @@ async function loadHistory() {
                         openRun(
                             el.dataset.id
                         );
-
             });
 
 
@@ -1207,9 +1740,6 @@ async function openRun(id) {
                 '/result'
             );
 
-        /*
-         * Again, display Results BEFORE drawing.
-         */
         showView('results');
 
         render(
@@ -1237,6 +1767,8 @@ $('refresh').onclick =
 // ============================================================
 // START APP
 // ============================================================
+
+bindChartInteraction();
 
 setDates();
 
