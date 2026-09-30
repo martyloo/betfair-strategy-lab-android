@@ -334,15 +334,6 @@ function requestBody() {
         overround_max:
             num('overMax'),
 
-        race_codes:
-        selectedChips('raceCodes'),
-    
-        race_categories:
-            selectedChips('raceCategories'),
-        
-        race_grades:
-        selectedChips('raceGrades'),
-
         race_codes: selectedChips('raceCodes'),
         race_categories: selectedChips('raceCategories'),
         race_grades: selectedChips('raceGrades'),
