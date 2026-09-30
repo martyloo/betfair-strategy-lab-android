@@ -403,30 +403,66 @@ async function filters() {
         // Great Britain only.
         const c = 'GB';
 
-        const x =
-            await api(
-                `/api/filter-options?plan=Basic%20Plan&country=${encodeURIComponent(c)}`
-            );
+        const x = await api(
+            `/api/filter-options?plan=Basic%20Plan&country=${encodeURIComponent(c)}`
+        );
+
+        // -------------------------
+        // VENUES
+        // -------------------------
+
+        const venues = Array.isArray(x.venues)
+            ? x.venues
+            : [];
 
         $('venue').innerHTML =
             '<option value="">Any venue</option>' +
-            x.venues
+            venues
+                .filter(Boolean)
                 .map(v =>
-                    `<option>${esc(v)}</option>`
+                    `<option value="${esc(v)}">${esc(v)}</option>`
                 )
                 .join('');
+
+
+        // -------------------------
+        // DISTANCES
+        // -------------------------
+
+        const distances = Array.isArray(x.distances)
+            ? x.distances
+            : [];
 
         $('distance').innerHTML =
             '<option value="">Any distance</option>' +
-            x.distances
+            distances
+                .filter(Boolean)
                 .map(v =>
-                    `<option>${esc(v)}</option>`
+                    `<option value="${esc(v)}">${esc(v)}</option>`
                 )
                 .join('');
 
+
+        console.log(
+            'Filter options loaded:',
+            venues.length,
+            'venues,',
+            distances.length,
+            'distances'
+        );
+
     } catch (e) {
 
-        console.log(e);
+        console.error(
+            'Could not load filter options:',
+            e
+        );
+
+        $('venue').innerHTML =
+            '<option value="">Any venue</option>';
+
+        $('distance').innerHTML =
+            '<option value="">Any distance</option>';
     }
 }
 
